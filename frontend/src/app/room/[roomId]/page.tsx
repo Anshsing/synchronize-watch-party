@@ -76,6 +76,11 @@ export default function RoomPage() {
   const [chatInput, setChatInput] = useState("");
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
+  // Layout & PiP Pinning States
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Collapsed on mobile, toggleable
+  const [pinnedUserId, setPinnedUserId] = useState<string | null>("local"); // Pin specific video stream in PiP
+  const pipVideoRef = useRef<HTMLVideoElement>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const isSyncingRef = useRef(false);
@@ -124,6 +129,18 @@ export default function RoomPage() {
         setLocalStream(null); // Allow joining without camera
       });
   }, []);
+
+  // Connect pinned video stream to PiP ref whenever pinned user changes
+  useEffect(() => {
+    if (!pipVideoRef.current) return;
+    if (pinnedUserId === "local" && localStream) {
+      pipVideoRef.current.srcObject = localStream;
+    } else if (pinnedUserId && remoteStreams[pinnedUserId]) {
+      pipVideoRef.current.srcObject = remoteStreams[pinnedUserId];
+    } else {
+      pipVideoRef.current.srcObject = null;
+    }
+  }, [pinnedUserId, localStream, remoteStreams]);
 
   useEffect(() => {
     // Only connect socket if we have fetched the videoUrl (so room is valid)
@@ -334,40 +351,54 @@ export default function RoomPage() {
         </Canvas>
       </div>
 
-      <main className="relative z-10 flex flex-col lg:flex-row h-screen">
+      <main className="relative z-10 flex flex-col lg:flex-row h-screen overflow-hidden">
         
         {/* Main Video Section */}
-        <div className="flex-1 p-4 md:p-8 flex flex-col items-center overflow-y-auto">
+        <div className="flex-1 p-3 md:p-6 lg:p-8 flex flex-col items-center overflow-y-auto w-full h-full custom-scrollbar">
           
-          <div className="w-full max-w-6xl flex flex-wrap gap-4 justify-between items-center mb-6 backdrop-blur-md bg-black/20 p-4 rounded-2xl border border-white/5 shadow-lg">
-            <h1 className="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 tracking-widest uppercase">
-              Stream Core
-            </h1>
-            <div className="flex flex-wrap gap-4 items-center">
+          <div className="w-full max-w-6xl flex flex-wrap gap-3 justify-between items-center mb-4 md:mb-6 backdrop-blur-md bg-black/40 p-3 md:p-4 rounded-2xl border border-white/10 shadow-lg">
+            <div className="flex items-center gap-3">
+              <h1 className="text-lg md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 tracking-widest uppercase">
+                Stream Core
+              </h1>
+              <div className="bg-black/60 px-3 py-1 rounded-lg border border-white/10 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="text-gray-400 text-[10px] md:text-xs font-semibold tracking-wider">NODE</span>
+                <span className="text-emerald-400 font-mono font-bold tracking-widest text-xs md:text-sm">{roomId}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 items-center">
               {amIHost && (
                 <button 
                   onClick={toggleControls}
-                  className={`text-xs font-bold tracking-widest uppercase px-3 py-1.5 rounded-lg border transition-all ${controlsLocked ? 'bg-red-900/30 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'bg-green-900/30 border-green-500/50 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.2)]'}`}
+                  className={`text-[10px] md:text-xs font-bold tracking-widest uppercase px-3 py-1.5 rounded-lg border transition-all ${controlsLocked ? 'bg-red-900/30 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'bg-green-900/30 border-green-500/50 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.2)]'}`}
                 >
                   {controlsLocked ? 'Controls: Host Only' : 'Controls: Everyone'}
                 </button>
               )}
               {!amIHost && !controlsLocked && (
-                <span className="text-xs text-green-400 font-bold tracking-widest uppercase bg-green-900/30 border border-green-500/50 px-3 py-1.5 rounded-lg">
-                  Unlocked Player
+                <span className="text-[10px] md:text-xs text-green-400 font-bold tracking-widest uppercase bg-green-900/30 border border-green-500/50 px-2.5 py-1 rounded-lg">
+                  Unlocked
                 </span>
               )}
-              <div className="bg-black/40 px-4 py-2 rounded-lg border border-white/10 flex items-center gap-3">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-gray-400 text-xs font-semibold tracking-wider">NODE ID</span>
-                <span className="text-emerald-400 font-mono font-bold tracking-widest">{roomId}</span>
-              </div>
+              {/* Toggle Participants Button for Mobile & Clean UI */}
+              <button
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className={`flex items-center gap-2 text-xs font-bold tracking-wider uppercase px-3 py-1.5 rounded-lg border transition-all ${isSidebarOpen ? 'bg-blue-600/40 border-blue-400 text-white' : 'bg-white/10 border-white/20 text-gray-300 hover:bg-white/20'}`}
+              >
+                <span>👥 Nodes</span>
+                <span className="bg-blue-500/30 text-blue-300 px-1.5 py-0.2 rounded text-[10px] font-mono">
+                  {Object.keys(users).length}
+                </span>
+              </button>
             </div>
           </div>
           
+          {/* Main Streaming Video Container */}
           <div className="w-full max-w-6xl relative group">
             <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
-            <div className="relative bg-black/80 rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.5)] border border-white/10 backdrop-blur-xl">
+            <div className="relative bg-black/90 rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.7)] border border-white/10 backdrop-blur-xl aspect-video flex items-center justify-center">
               <video
                 ref={videoRef}
                 src={videoUrl}
@@ -375,81 +406,133 @@ export default function RoomPage() {
                 crossOrigin="anonymous"
                 playsInline
                 preload="auto"
-                className="w-full h-auto aspect-video"
+                className="w-full h-full object-contain"
                 onPlay={handlePlay}
                 onPause={handlePause}
                 onSeeked={handleSeeked}
               />
+
+              {/* Picture-in-Picture (PiP) Floating Overlay for Pinned User */}
+              {pinnedUserId && (
+                <div className="absolute bottom-4 right-4 z-30 w-36 sm:w-48 md:w-56 aspect-video bg-black/85 rounded-xl overflow-hidden border-2 border-purple-500/80 shadow-[0_8px_24px_rgba(0,0,0,0.8)] backdrop-blur-md group/pip transition-all hover:scale-105">
+                  {pinnedUserId === "local" ? (
+                    hasCamera && isVideoOn ? (
+                      <video ref={pipVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 text-[10px]">
+                        <span>📹 Muted</span>
+                      </div>
+                    )
+                  ) : (
+                    remoteStreams[pinnedUserId] && users[pinnedUserId]?.hasCamera !== false ? (
+                      <video ref={pipVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 text-[10px]">
+                        <span>📹 No Feed</span>
+                      </div>
+                    )
+                  )}
+
+                  {/* PiP Overlay Controls */}
+                  <div className="absolute top-1 left-1 bg-black/60 px-2 py-0.5 rounded text-[10px] text-white/90 font-medium truncate max-w-[100px]">
+                    {pinnedUserId === "local" ? `${myName} (You)` : (users[pinnedUserId]?.name || "Node")}
+                  </div>
+
+                  <button
+                    onClick={() => setPinnedUserId(null)}
+                    title="Unpin PiP"
+                    className="absolute top-1 right-1 p-1 bg-black/70 hover:bg-red-600/80 text-white rounded-md text-[10px] transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Chat Interface (Mobile below video, Desktop uses fixed sidebar space but let's put it here for better wide layout) */}
-          <div className="w-full max-w-6xl mt-8 flex-1 min-h-[300px] flex flex-col backdrop-blur-xl bg-black/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
-            <div className="p-4 border-b border-white/10 bg-white/5">
-              <h2 className="text-gray-300 text-sm font-bold tracking-[0.2em] uppercase">Comm Link</h2>
+          {/* Comm Link (Chat Interface) */}
+          <div className="w-full max-w-6xl mt-6 flex-1 min-h-[220px] max-h-[360px] flex flex-col backdrop-blur-xl bg-black/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+            <div className="p-3 border-b border-white/10 bg-white/5 flex justify-between items-center">
+              <h2 className="text-gray-300 text-xs font-bold tracking-[0.2em] uppercase">Comm Link</h2>
+              <span className="text-[10px] text-gray-400">Live Socket Sync</span>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar" ref={chatScrollRef}>
-              {chatMessages.length === 0 && <p className="text-gray-500 text-center text-sm mt-10 italic">No messages yet. Start the conversation!</p>}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar" ref={chatScrollRef}>
+              {chatMessages.length === 0 && <p className="text-gray-500 text-center text-xs mt-6 italic">No messages yet. Say hi to the room!</p>}
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`flex flex-col ${msg.senderId === socket?.id ? 'items-end' : 'items-start'}`}>
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{msg.senderName} • {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                  <div className={`px-4 py-2 rounded-xl text-sm max-w-[80%] break-words ${msg.senderId === socket?.id ? 'bg-blue-600/50 border border-blue-500/30' : 'bg-white/10 border border-white/5'}`}>
+                  <span className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">{msg.senderName} • {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                  <div className={`px-3.5 py-1.5 rounded-xl text-xs md:text-sm max-w-[85%] break-words ${msg.senderId === socket?.id ? 'bg-blue-600/60 border border-blue-400/40' : 'bg-white/10 border border-white/5'}`}>
                     {msg.message}
                   </div>
                 </div>
               ))}
             </div>
 
-            <form onSubmit={sendChat} className="p-4 bg-black/60 border-t border-white/10 flex gap-2">
+            <form onSubmit={sendChat} className="p-3 bg-black/60 border-t border-white/10 flex gap-2">
               <input 
                 type="text" 
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 placeholder="Send a message (Emojis supported 🚀)..."
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs md:text-sm focus:outline-none focus:border-blue-500"
               />
-              <button type="submit" className="bg-blue-600 hover:bg-blue-700 px-6 font-bold rounded-lg transition-colors">SEND</button>
+              <button type="submit" className="bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs md:text-sm font-bold rounded-lg transition-colors">SEND</button>
             </form>
           </div>
         </div>
 
-        {/* Spatial Participants Sidebar */}
-        <div className="w-full lg:w-96 backdrop-blur-2xl bg-black/50 border-l border-white/10 flex flex-col h-full lg:h-auto overflow-hidden">
-          <div className="p-6 border-b border-white/10 bg-gradient-to-b from-white/5 to-transparent">
-            <h2 className="text-gray-300 text-sm font-bold tracking-[0.2em] uppercase flex justify-between items-center">
+        {/* Hideable / Responsive Spatial Participants Sidebar */}
+        <div className={`fixed inset-y-0 right-0 z-40 w-80 md:w-88 lg:w-96 backdrop-blur-2xl bg-black/90 lg:bg-black/60 border-l border-white/10 flex flex-col transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full lg:hidden'}`}>
+          <div className="p-4 md:p-6 border-b border-white/10 bg-gradient-to-b from-white/5 to-transparent flex justify-between items-center">
+            <h2 className="text-gray-300 text-xs md:text-sm font-bold tracking-[0.2em] uppercase flex items-center gap-2">
               Active Nodes
-              <span className="bg-blue-600/30 text-blue-400 px-2 py-0.5 rounded text-xs border border-blue-500/30">
+              <span className="bg-blue-600/30 text-blue-400 px-2 py-0.5 rounded text-xs border border-blue-500/30 font-mono">
                 {Object.keys(users).length}
               </span>
             </h2>
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="lg:hidden p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+            >
+              ✕
+            </button>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 custom-scrollbar">
             
             {/* Local Video Card */}
-            <div className="relative group">
+            <div className={`relative group rounded-xl transition-all ${pinnedUserId === "local" ? 'ring-2 ring-purple-500' : ''}`}>
               <div className="absolute -inset-0.5 bg-gradient-to-b from-blue-500 to-purple-600 rounded-xl blur opacity-30"></div>
-              <div className="relative rounded-xl overflow-hidden border border-white/20 bg-black/60 shadow-xl aspect-video flex items-center justify-center">
+              <div className="relative rounded-xl overflow-hidden border border-white/20 bg-black/70 shadow-xl aspect-video flex items-center justify-center">
                 {hasCamera && isVideoOn ? (
-                  <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover mix-blend-screen" />
+                  <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                 ) : (
                   <div className="text-gray-600 flex flex-col items-center">
-                    <svg className="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                    <span className="text-xs tracking-widest font-bold">NO SIGNAL</span>
+                    <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    <span className="text-[10px] tracking-widest font-bold">NO SIGNAL</span>
                   </div>
                 )}
                 
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent pt-8 pb-3 px-4 flex justify-between items-end">
-                  <p className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
-                    {myName} (You) {amIHost && <span className="text-yellow-400 text-xs">👑 HOST</span>}
+                {/* Pin to PiP Button */}
+                <button
+                  onClick={() => setPinnedUserId(pinnedUserId === "local" ? null : "local")}
+                  className={`absolute top-2 right-2 p-1.5 rounded-lg backdrop-blur-md text-xs transition-all ${pinnedUserId === "local" ? 'bg-purple-600 text-white shadow-lg' : 'bg-black/60 text-gray-300 hover:bg-white/20'}`}
+                  title={pinnedUserId === "local" ? "Unpin from PiP" : "Pin to Picture-in-Picture"}
+                >
+                  📌 {pinnedUserId === "local" ? "Pinned" : "Pin PiP"}
+                </button>
+
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent pt-6 pb-2.5 px-3 flex justify-between items-end">
+                  <p className="text-xs font-bold text-white tracking-wide flex items-center gap-1.5 truncate">
+                    {myName} (You) {amIHost && <span className="text-yellow-400 text-[10px]">👑 HOST</span>}
                   </p>
                   {hasCamera && (
-                    <div className="flex gap-2">
-                      <button onClick={toggleAudio} className={`p-1.5 rounded-md ${isAudioOn ? 'bg-white/20 hover:bg-white/30' : 'bg-red-500/50 text-red-200 hover:bg-red-500/70'}`}>
+                    <div className="flex gap-1.5">
+                      <button onClick={toggleAudio} className={`p-1 rounded-md text-xs ${isAudioOn ? 'bg-white/20 hover:bg-white/30' : 'bg-red-500/50 text-red-200 hover:bg-red-500/70'}`}>
                         🎤
                       </button>
-                      <button onClick={toggleVideo} className={`p-1.5 rounded-md ${isVideoOn ? 'bg-white/20 hover:bg-white/30' : 'bg-red-500/50 text-red-200 hover:bg-red-500/70'}`}>
+                      <button onClick={toggleVideo} className={`p-1 rounded-md text-xs ${isVideoOn ? 'bg-white/20 hover:bg-white/30' : 'bg-red-500/50 text-red-200 hover:bg-red-500/70'}`}>
                         📹
                       </button>
                     </div>
@@ -461,36 +544,46 @@ export default function RoomPage() {
             {/* Remote Videos */}
             {Object.entries(remoteStreams).map(([peerSocketId, stream]) => {
               const user = users[peerSocketId] || { name: "Connecting...", isHost: false, hasCamera: true };
-              
+              const isPinned = pinnedUserId === peerSocketId;
+
               return (
-                <div key={peerSocketId} className="relative group">
+                <div key={peerSocketId} className={`relative group rounded-xl transition-all ${isPinned ? 'ring-2 ring-purple-500' : ''}`}>
                   <div className="absolute -inset-0.5 bg-white/10 rounded-xl blur opacity-20 transition duration-300 group-hover:opacity-40"></div>
-                  <div className="relative rounded-xl overflow-hidden border border-white/10 bg-black/60 shadow-lg aspect-video flex items-center justify-center">
+                  <div className="relative rounded-xl overflow-hidden border border-white/10 bg-black/70 shadow-lg aspect-video flex items-center justify-center">
                     {user.hasCamera !== false ? (
                       <video
                         autoPlay
                         playsInline
-                        className="w-full h-full object-cover mix-blend-screen"
+                        className="w-full h-full object-cover"
                         ref={el => { if (el) el.srcObject = stream; }}
                       />
                     ) : (
                       <div className="text-gray-600 flex flex-col items-center">
-                        <svg className="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                        <span className="text-xs tracking-widest font-bold">NO SIGNAL</span>
+                        <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        <span className="text-[10px] tracking-widest font-bold">NO SIGNAL</span>
                       </div>
                     )}
 
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent pt-8 pb-3 px-4 flex justify-between items-end">
-                      <p className="text-sm font-semibold text-gray-200 tracking-wide">
-                        {user.name} {user.isHost && <span className="text-yellow-400 text-xs">👑</span>}
+                    {/* Pin remote user to PiP */}
+                    <button
+                      onClick={() => setPinnedUserId(isPinned ? null : peerSocketId)}
+                      className={`absolute top-2 right-2 p-1.5 rounded-lg backdrop-blur-md text-xs transition-all ${isPinned ? 'bg-purple-600 text-white shadow-lg' : 'bg-black/60 text-gray-300 hover:bg-white/20'}`}
+                      title={isPinned ? "Unpin from PiP" : "Pin to Picture-in-Picture"}
+                    >
+                      📌 {isPinned ? "Pinned" : "Pin PiP"}
+                    </button>
+
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent pt-6 pb-2.5 px-3 flex justify-between items-end">
+                      <p className="text-xs font-semibold text-gray-200 tracking-wide truncate">
+                        {user.name} {user.isHost && <span className="text-yellow-400 text-[10px]">👑</span>}
                       </p>
                       
                       {amIHost && !user.isHost && (
                         <button 
                           onClick={() => kickUser(peerSocketId)}
-                          className="opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 bg-red-500/20 hover:bg-red-600 border border-red-500/50 hover:border-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all duration-300 shadow-[0_0_10px_rgba(239,68,68,0.3)] backdrop-blur-md"
+                          className="opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 bg-red-500/20 hover:bg-red-600 border border-red-500/50 hover:border-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-md transition-all duration-300 shadow-[0_0_10px_rgba(239,68,68,0.3)] backdrop-blur-md"
                         >
-                          TERMINATE
+                          KICK
                         </button>
                       )}
                     </div>

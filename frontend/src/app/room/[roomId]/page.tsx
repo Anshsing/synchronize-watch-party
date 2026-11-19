@@ -30,7 +30,7 @@ function PassiveParticles() {
   return (
     <points ref={mesh}>
       <bufferGeometry>
-        <bufferAttribute attach="attributes-position" count={count} array={particlesPosition} itemSize={3} />
+        <bufferAttribute attach="attributes-position" args={[particlesPosition, 3]} />
       </bufferGeometry>
       <pointsMaterial size={0.03} color="#38BDF8" sizeAttenuation transparent opacity={0.3} blending={THREE.AdditiveBlending} />
     </points>

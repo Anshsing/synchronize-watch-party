@@ -50,10 +50,19 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Mongoose Setup
-mongoose.connect(process.env.DATABASE_URL)
-  .then(() => console.log('✅ Connected to MongoDB Atlas!'))
-  .catch(err => console.error('❌ MongoDB Connection Error:', err));
+// Mongoose & Storage Setup
+let isDbConnected = false;
+const memoryRooms = new Map(); // In-memory fallback if MongoDB is down or unconfigured
+
+mongoose.connect(process.env.DATABASE_URL, { serverSelectionTimeoutMS: 5000 })
+  .then(() => {
+    isDbConnected = true;
+    console.log('✅ Connected to MongoDB Atlas!');
+  })
+  .catch(err => {
+    console.error('⚠️ MongoDB Connection Error:', err.message);
+    console.log('ℹ️ Operating in fallback in-memory database mode.');
+  });
 
 const roomSchema = new mongoose.Schema({
   roomId: { type: String, required: true, unique: true },
@@ -65,7 +74,35 @@ const roomSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-const Room = mongoose.model('Room', roomSchema);
+const RoomModel = mongoose.model('Room', roomSchema);
+
+// Database Adapter wrapping MongoDB with In-Memory fallback
+const DB = {
+  async createRoom(data) {
+    if (isDbConnected) {
+      return await RoomModel.create(data);
+    }
+    const record = { ...data, hostSocketId: null, controlsLocked: false, isBlacklisted: false, createdAt: new Date() };
+    memoryRooms.set(data.roomId, record);
+    return record;
+  },
+  async findRoom(roomId) {
+    if (isDbConnected) {
+      return await RoomModel.findOne({ roomId });
+    }
+    return memoryRooms.get(roomId) || null;
+  },
+  async updateRoom(query, update) {
+    if (isDbConnected) {
+      return await RoomModel.updateOne(query, update);
+    }
+    const existing = memoryRooms.get(query.roomId);
+    if (existing) {
+      Object.assign(existing, update);
+    }
+    return existing;
+  }
+};
 
 // REST APIs
 app.post('/api/create-room', upload.single('video'), async (req, res) => {
@@ -80,7 +117,7 @@ app.post('/api/create-room', upload.single('video'), async (req, res) => {
     if (!videoUrl) return res.status(400).json({ error: 'Video file or URL is required' });
 
     try {
-      await Room.create({ roomId, videoUrl, hostToken });
+      await DB.createRoom({ roomId, videoUrl, hostToken });
       console.log(`[ACTIVITY] Room Created: ${roomId} with media: ${videoUrl.substring(0, 50)}...`);
       res.json({ roomId, videoUrl, hostToken });
     } catch (err) {
@@ -93,7 +130,7 @@ app.get('/api/room/:roomId', async (req, res) => {
     try {
       // Basic sanitization of URL param
       const safeRoomId = req.params.roomId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-      const room = await Room.findOne({ roomId: safeRoomId });
+      const room = await DB.findRoom(safeRoomId);
       
       if (!room) {
           return res.status(404).json({ error: 'Room not found', code: 'NOT_FOUND' });
@@ -147,7 +184,7 @@ io.on('connection', (socket) => {
     if (!roomId) return;
     roomId = String(roomId).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     
-    const room = await Room.findOne({ roomId });
+    const room = await DB.findRoom(roomId);
     if (!room || room.isBlacklisted) {
       socket.emit('error', { title: 'Access Denied', message: 'Room not found or has expired.' });
       return;
@@ -157,7 +194,7 @@ io.on('connection', (socket) => {
     
     const isHost = (hostToken === room.hostToken);
     if (isHost) {
-      await Room.updateOne({ roomId }, { hostSocketId: socket.id });
+      await DB.updateRoom({ roomId }, { hostSocketId: socket.id });
     }
 
     const safeName = sanitizeString(name || "Anonymous");
@@ -179,12 +216,12 @@ io.on('connection', (socket) => {
   });
 
   const verifyHost = async (roomId, socketId) => {
-    const room = await Room.findOne({ roomId: String(roomId).toUpperCase() });
+    const room = await DB.findRoom(String(roomId).toUpperCase());
     return room && !room.isBlacklisted && room.hostSocketId === socketId;
   };
 
   const canControl = async (roomId, socketId) => {
-    const room = await Room.findOne({ roomId: String(roomId).toUpperCase() });
+    const room = await DB.findRoom(String(roomId).toUpperCase());
     if (!room || room.isBlacklisted) return false;
     if (!room.controlsLocked) return true;
     return room.hostSocketId === socketId;
@@ -202,7 +239,7 @@ io.on('connection', (socket) => {
 
   socket.on('toggle-controls', async ({ roomId, locked }) => {
     if (await verifyHost(roomId, socket.id)) {
-      await Room.updateOne({ roomId: String(roomId).toUpperCase() }, { controlsLocked: locked });
+      await DB.updateRoom({ roomId: String(roomId).toUpperCase() }, { controlsLocked: locked });
       io.to(String(roomId).toUpperCase()).emit('controls-toggled', locked);
     }
   });
@@ -257,7 +294,7 @@ io.on('connection', (socket) => {
           blacklistTimeouts[roomId] = setTimeout(async () => {
             console.log(`[ACTIVITY] Executing blacklist for: ${roomId}`);
             try {
-              await Room.updateOne({ roomId }, { isBlacklisted: true, hostSocketId: null });
+              await DB.updateRoom({ roomId }, { isBlacklisted: true, hostSocketId: null });
             } catch(e) { console.error("Error blacklisting room:", e); }
             delete activeRooms[roomId];
             delete blacklistTimeouts[roomId];
@@ -265,7 +302,7 @@ io.on('connection', (socket) => {
           
         } else if (wasHost) {
           try {
-            await Room.updateOne({ roomId }, { hostSocketId: null });
+            await DB.updateRoom({ roomId }, { hostSocketId: null });
           } catch (e) {}
         }
       }

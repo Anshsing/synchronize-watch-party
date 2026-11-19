@@ -4,7 +4,7 @@ export default function PrivacyPolicy() {
       <div className="max-w-3xl mx-auto backdrop-blur-xl bg-white/5 p-10 rounded-3xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.37)]">
         <h1 className="text-4xl font-black mb-8 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 tracking-wide">Privacy Policy</h1>
         <div className="space-y-6 text-gray-300 leading-relaxed font-light">
-          <p>Effective Date: {new Date().toLocaleDateString()}</p>
+          <p>Effective Date: October 2026</p>
           <p>This Privacy Policy explains how we collect, use, and share information from users of our application.</p>
           
           <h2 className="text-2xl font-bold text-white mt-8 tracking-wide">Information Collection</h2>

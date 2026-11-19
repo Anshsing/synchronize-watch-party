@@ -50,6 +50,8 @@ interface ChatMessage {
   senderId: string;
 }
 
+export const dynamic = "force-dynamic";
+
 export default function RoomPage() {
   const router = useRouter();
   const params = useParams();

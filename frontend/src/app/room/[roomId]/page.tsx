@@ -372,6 +372,9 @@ export default function RoomPage() {
                 ref={videoRef}
                 src={videoUrl}
                 controls={canIControl}
+                crossOrigin="anonymous"
+                playsInline
+                preload="auto"
                 className="w-full h-auto aspect-video"
                 onPlay={handlePlay}
                 onPause={handlePause}

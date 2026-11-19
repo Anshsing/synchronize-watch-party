@@ -171,10 +171,10 @@ export default function Home() {
                   </h2>
                   <form onSubmit={handleCreateRoom} className="space-y-6">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-400 mb-2 tracking-wider uppercase">Data Source (MP4 Upload)</label>
+                      <label className="block text-xs font-semibold text-gray-400 mb-2 tracking-wider uppercase">Data Source (Upload Video File)</label>
                       <input
                         type="file"
-                        accept="video/mp4"
+                        accept="video/*,.mp4,.webm,.ogg,.ogv,.mov,.mkv,.m4v,.avi"
                         onChange={(e) => {
                           setFile(e.target.files?.[0] || null);
                           setVideoUrl("");

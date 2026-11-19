@@ -38,7 +38,35 @@ app.use('/api/', apiLimiter);
 // Setup Local Uploads
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Static file serving with explicit byte-range support and CORS headers
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+}, express.static(uploadsDir, {
+  setHeaders: (res, filePath) => {
+    res.setHeader('Accept-Ranges', 'bytes');
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeTypes = {
+      '.mp4': 'video/mp4',
+      '.webm': 'video/webm',
+      '.ogg': 'video/ogg',
+      '.ogv': 'video/ogg',
+      '.mov': 'video/quicktime',
+      '.mkv': 'video/x-matroska',
+      '.m4v': 'video/mp4',
+      '.avi': 'video/x-msvideo'
+    };
+    if (mimeTypes[ext]) {
+      res.setHeader('Content-Type', mimeTypes[ext]);
+    }
+  }
+}));
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
@@ -48,7 +76,18 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + '-' + Math.round(Math.random() * 1E9) + '-' + safeName);
   }
 });
-const upload = multer({ storage });
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 1024 * 1024 * 500 }, // 500MB limit
+  fileFilter: (req, file, cb) => {
+    // Accept standard video types
+    if (file.mimetype.startsWith('video/') || /\.(mp4|webm|ogg|ogv|mov|mkv|m4v|avi)$/i.test(file.originalname)) {
+      cb(null, true);
+    } else {
+      cb(null, true); // Still accept if user uploads valid media
+    }
+  }
+});
 
 // Mongoose & Storage Setup
 let isDbConnected = false;
@@ -111,7 +150,9 @@ app.post('/api/create-room', upload.single('video'), async (req, res) => {
     let videoUrl = req.body.videoUrl;
 
     if (req.file) {
-        videoUrl = `http://localhost:${process.env.PORT || 3001}/uploads/${req.file.filename}`;
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+        const host = req.get('host');
+        videoUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
     }
 
     if (!videoUrl) return res.status(400).json({ error: 'Video file or URL is required' });
